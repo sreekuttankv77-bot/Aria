@@ -17,69 +17,33 @@ jobs:
         shell: bash
         run: |
           set -e
-          shopt -s nullglob
-          zips=( *.zip )
+          unzip -o "*.zip" -d project || true
 
-          if [ ${#zips[@]} -eq 0 ]; then
-            echo "No project ZIP found; assuming project is already extracted."
-            exit 0
-          fi
-
-          ZIP="${zips[0]}"
-          echo "Using project archive: $ZIP"
-
-          rm -rf .project_extract
-          mkdir .project_extract
-          unzip -q "$ZIP" -d .project_extract
-
-          ROOT=".project_extract"
-          entries=(.project_extract/*)
-
-          if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then
-            ROOT="${entries[0]}"
-          fi
-
-          cp -a "$ROOT"/. .
-          rm -rf .project_extract
-
-      - name: Verify Gradle project
+      - name: Find Android project
+        id: find
         shell: bash
         run: |
-          set -e
+          DIR=$(find project -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs dirname)
+          echo "dir=$DIR" >> $GITHUB_OUTPUT
 
-          test -f settings.gradle.kts || test -f settings.gradle
-          test -f build.gradle.kts || test -f build.gradle
-          test -f app/build.gradle.kts || test -f app/build.gradle
-
-          echo "Gradle project found:"
-          ls -la
-          find app -maxdepth 2 -type f | head -30
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Build APK
-        shell: bash
-        run: |
-          set -e
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew --no-daemon assembleDebug --stacktrace
-          else
-            echo "Gradle wrapper not found."
-            echo "Installing Gradle 8.10.2..."
-            sudo apt-get update
-            sudo apt-get install -y gradle
-            gradle --no-daemon assembleDebug --stacktrace
-          fi
+      - name: Build APK
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Aria-debug-apk
-          path: '**/build/outputs/apk/debug/*.apk'
-          if-no-files-found: error
+          name: app-debug
+          path: |
+            **/build/outputs/apk/debug/*.apk
