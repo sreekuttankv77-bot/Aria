@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -20,52 +21,64 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Show repository files
-        run: |
-          echo "Repository:"
-          pwd
-          echo "Files:"
-          find . -maxdepth 4 -type f | sort | head -300
-
-      - name: Find Android project
-        id: project
+      - name: Locate or extract Android project
         shell: bash
         run: |
-          PROJECT_DIR=$(find . \
-            -type f \
-            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
-            -print -quit \
-            | xargs -r dirname)
+          set -e
+
+          PROJECT_DIR=""
+
+          # Case 1: Android project is already at repository root.
+          if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
+            PROJECT_DIR="."
+          fi
+
+          # Case 2: Repository contains a ZIP package.
+          if [ -z "$PROJECT_DIR" ]; then
+            ZIP_FILE="$(find . -maxdepth 3 -type f -iname '*.zip' | head -1 || true)"
+
+            if [ -n "$ZIP_FILE" ]; then
+              echo "Found package: $ZIP_FILE"
+              rm -rf .build-project
+              mkdir -p .build-project
+              unzip -q "$ZIP_FILE" -d .build-project
+
+              PROJECT_DIR="$(find .build-project -type f \
+                \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) \
+                -print -quit | xargs -r dirname)"
+            fi
+          fi
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: No Gradle project found."
-            echo "Expected settings.gradle.kts or settings.gradle."
+            echo "::error::No Android Gradle project found."
+            echo "The repository must contain settings.gradle.kts/settings.gradle or a ZIP containing them."
+            find . -maxdepth 4 -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR="${PROJECT_DIR#./}"
+          echo "Android project: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Found Android project at: $PROJECT_DIR"
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Gradle 8.10.2
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
-      - name: Build Debug APK
-        working-directory: ${{ steps.project.outputs.project_dir }}
+      - name: Build debug APK
+        shell: bash
         run: |
-          gradle assembleDebug --stacktrace
+          set -e
+          cd "$PROJECT_DIR"
+          gradle clean assembleDebug --stacktrace --no-daemon
 
-      - name: Find APK
+      - name: Verify APK
+        shell: bash
         run: |
-          echo "APK files:"
-          find . -type f -name "*.apk" -print
+          find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Monaco-Mini-GP-debug
-          path: "**/app/build/outputs/apk/debug/*.apk"
+          path: "${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
