@@ -2,8 +2,7 @@ name: Build AI Studio
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -11,22 +10,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Extract AI Studio ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP=$(find . -maxdepth 2 -type f -name "*.zip" \
+            -not -path "./.git/*" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No ZIP file found."
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP"
+          rm -rf extracted
+          mkdir extracted
+          unzip -q "$ZIP" -d extracted
 
       - name: Find AI Studio
         shell: bash
         run: |
           set -e
 
-          INDEX=$(find . -type f -name "index.html" \
-            -not -path "./.git/*" \
-            | head -n 1)
+          INDEX=$(find extracted -type f -name "index.html" | head -n 1)
 
           if [ -z "$INDEX" ]; then
-            echo "ERROR: index.html was not found."
-            echo "Repository contents:"
-            find . -maxdepth 4 -type f | sort
+            echo "ERROR: index.html was not found after extracting the ZIP."
+            echo "Extracted files:"
+            find extracted -maxdepth 5 -type f | sort
             exit 1
           fi
 
@@ -40,14 +55,14 @@ jobs:
         run: |
           set -e
 
-          mkdir -p dist
-
+          rm -rf dist
+          mkdir dist
           cp -r "$APP_DIR"/. dist/
 
           cd dist
           zip -r ../AI-Studio-Personal.zip .
 
-      - name: Upload AI Studio ZIP
+      - name: Upload AI Studio
         uses: actions/upload-artifact@v4
         with:
           name: AI-Studio-Personal
