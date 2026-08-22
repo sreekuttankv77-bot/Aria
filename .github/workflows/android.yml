@@ -1,62 +1,33 @@
-name: Build Monaco Mini GP APK
+name: Build AI Studio
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Locate Android project
-        shell: bash
+      - name: Verify HTML app
         run: |
-          set -e
-          PROJECT_DIR=""
-          if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
-            PROJECT_DIR="."
-          else
-            ZIP_FILE="$(find . -maxdepth 3 -type f -iname '*.zip' | head -1 || true)"
-            if [ -n "$ZIP_FILE" ]; then
-              rm -rf .build-project
-              mkdir .build-project
-              unzip -q "$ZIP_FILE" -d .build-project
-              PROJECT_DIR="$(find .build-project -type f \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) -print -quit | xargs -r dirname)"
-            fi
-          fi
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::No Android Gradle project found."
-            exit 1
-          fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          test -f index.html
+          echo "AI Studio HTML found"
 
-      - name: Verify JVM targets
+      - name: Package app
         run: |
-          grep -nE 'compileOptions|sourceCompatibility|targetCompatibility|kotlinOptions|jvmTarget' "$PROJECT_DIR/app/build.gradle.kts"
+          mkdir -p dist
+          cp index.html dist/
+          cp README.md dist/ 2>/dev/null || true
+          cd dist
+          zip -r ../AI-Studio-Personal.zip .
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
-
-      - name: Build debug APK
-        run: |
-          cd "$PROJECT_DIR"
-          gradle clean assembleDebug --stacktrace --no-daemon
-
-      - name: Upload APK
+      - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Monaco-Mini-GP-debug
-          path: "${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk"
-          if-no-files-found: error
+          name: AI-Studio-Personal
+          path: AI-Studio-Personal.zip
