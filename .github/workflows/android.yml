@@ -2,7 +2,8 @@ name: Build AI Studio
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -13,20 +14,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify HTML app
+      - name: Find AI Studio
+        shell: bash
         run: |
-          test -f index.html
-          echo "AI Studio HTML found"
+          set -e
 
-      - name: Package app
+          INDEX=$(find . -type f -name "index.html" \
+            -not -path "./.git/*" \
+            | head -n 1)
+
+          if [ -z "$INDEX" ]; then
+            echo "ERROR: index.html was not found."
+            echo "Repository contents:"
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          APP_DIR=$(dirname "$INDEX")
+
+          echo "Found AI Studio at: $APP_DIR"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+      - name: Package AI Studio
+        shell: bash
         run: |
+          set -e
+
           mkdir -p dist
-          cp index.html dist/
-          cp README.md dist/ 2>/dev/null || true
+
+          cp -r "$APP_DIR"/. dist/
+
           cd dist
           zip -r ../AI-Studio-Personal.zip .
 
-      - name: Upload ZIP
+      - name: Upload AI Studio ZIP
         uses: actions/upload-artifact@v4
         with:
           name: AI-Studio-Personal
