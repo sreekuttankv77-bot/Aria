@@ -2,8 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -11,49 +10,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Extract ZIP projects
+      - name: Find or extract Android project
         shell: bash
         run: |
-          shopt -s nullglob
-          for file in *.zip; do
-            echo "Extracting $file"
-            unzip -o "$file" -d extracted
-          done
+          set -e
 
-      - name: Find Android project
-        shell: bash
-        run: |
-          GRADLEW=$(find . -type f -name gradlew -not -path './.git/*' | head -n 1)
+          if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
+            echo "PROJECT_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew was not found."
-            echo "Repository contents:"
-            find . -maxdepth 4 -type f | sort | head -n 300
+          ZIP_FILE=$(find . -maxdepth 3 -type f -name "*.zip" | head -n 1 || true)
+
+          if [ -n "$ZIP_FILE" ]; then
+            mkdir -p "$GITHUB_WORKSPACE/project"
+            unzip -q "$ZIP_FILE" -d "$GITHUB_WORKSPACE/project"
+          fi
+
+          PROJECT_FILE=$(find "$GITHUB_WORKSPACE" \
+            -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -not -path "*/.gradle/*" | head -n 1 || true)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: No Android Gradle project found."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "Found Gradle wrapper: $GRADLEW"
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project: $PROJECT_DIR"
 
-      - name: Make gradlew executable
-        run: chmod +x "$PROJECT_DIR/gradlew"
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
 
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          name: NovaAI-debug
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
