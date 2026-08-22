@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,7 +23,6 @@ jobs:
         run: |
           set -e
           PROJECT_DIR=""
-
           if [ -f "settings.gradle.kts" ] || [ -f "settings.gradle" ]; then
             PROJECT_DIR="."
           else
@@ -36,23 +34,15 @@ jobs:
               PROJECT_DIR="$(find .build-project -type f \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) -print -quit | xargs -r dirname)"
             fi
           fi
-
           if [ -z "$PROJECT_DIR" ]; then
             echo "::error::No Android Gradle project found."
             exit 1
           fi
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Verify Gradle configuration
-        shell: bash
+      - name: Verify JVM targets
         run: |
-          set -e
-          test -f "$PROJECT_DIR/settings.gradle.kts" -o -f "$PROJECT_DIR/settings.gradle"
-          test -f "$PROJECT_DIR/app/build.gradle.kts"
-          echo "Project structure OK"
-          echo "----- app/build.gradle.kts -----"
-          cat "$PROJECT_DIR/app/build.gradle.kts"
+          grep -nE 'compileOptions|sourceCompatibility|targetCompatibility|kotlinOptions|jvmTarget' "$PROJECT_DIR/app/build.gradle.kts"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
